@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>墨水屏日历牌 · E-Ink Calendar (LilyGo T5 4.7" 模拟器)</title>
+<style>
+  :root{
+    /* e-ink 纸白 / 墨黑 —— 白天模式 */
+    --paper:#e9e8e2;        /* 略带灰的纸白，模拟电子墨水 */
+    --paper-edge:#dcdbd3;
+    --ink:#16140f;          /* 近黑墨色 */
+    --ink-soft:#4a473e;
+    --ink-faint:#8b887d;
+    --line:#16140f;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;}
+  body{
+    background:#2a2c31;
+    background-image:radial-gradient(circle at 30% 20%,#34373d,#1d1f23 70%);
+    font-family:"Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    color:#e7e7e7;
+    display:flex;flex-direction:column;align-items:center;
+    padding:26px 14px 60px;min-height:100%;
+  }
+
+  h1.page-title{font-size:15px;font-weight:600;letter-spacing:.5px;color:#aeb2bb;margin:0 0 2px;}
+  p.page-sub{font-size:12px;color:#777b84;margin:0 0 20px;text-align:center;max-width:440px;line-height:1.6;}
+  p.page-sub b{color:#c7cad1;font-weight:600;}
+
+  /* ---------- 设备外壳 ---------- */
+  .device{
+    position:relative;
+    width:438px;max-width:96vw;
+    background:linear-gradient(160deg,#3a3d44,#202227);
+    border-radius:22px;
+    padding:20px 19px 30px;
+    box-shadow:0 26px 60px -18px rgba(0,0,0,.7),0 2px 0 rgba(255,255,255,.05) inset;
+  }
+  .device::after{ /* 底部 LilyGo 标 */
+    content:"LilyGo T5 4.7\"";
+    position:absolute;left:0;right:0;bottom:9px;text-align:center;
+    font-size:9px;letter-spacing:2px;color:#5a5e67;font-weight:600;
+  }
+  .usb{position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);
+    width:34px;height:8px;background:#15161a;border-radius:0 0 4px 4px;}
+
+  /* ---------- 墨水屏 ---------- */
+  .screen{
+    position:relative;
+    aspect-ratio:540/960;            /* 真实面板分辨率 540×960 竖屏 */
+    background:var(--paper);
+    border-radius:5px;
+    overflow:hidden;
+    color:var(--ink);
+    box-shadow:0 0 0 2px #111 inset, 0 1px 3px rgba(0,0,0,.4);
+    /* 墨水屏特有的极细颗粒感 */
+    background-image:repeating-linear-gradient(0deg,rgba(0,0,0,.012) 0 1px,transparent 1px 2px);
+    transition:filter .35s ease,background .35s ease,color .35s ease;
+    display:flex;flex-direction:column;
+    padding:18px 16px 14px;
+    user-select:none;
+  }
+  /* e-ink 刷新黑闪 */
+  .screen.flash{animation:einkflash .42s steps(1,end);}
+  @keyframes einkflash{
+    0%{filter:invert(1);}
+    45%{filter:invert(1);}
+    46%{filter:invert(0) brightness(.4);}
+    100%{filter:none;}
+  }
+
+  /* 顶部：左大日期 + 右迷你月历 */
+  .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .today-block{min-width:120px;}
+  .today-num{font-size:104px;line-height:.84;font-weight:800;letter-spacing:-3px;}
+  .today-dow{font-size:30px;font-weight:500;margin-top:6px;}
+  .today-my{font-size:15px;color:var(--ink-soft);margin-top:1px;letter-spacing:.5px;}
+
+  table.mini{border-collapse:collapse;margin-top:4px;}
+  table.mini th{font-size:13px;font-weight:700;color:var(--ink);padding:1px 0 3px;width:25px;text-align:center;}
+  table.mini td{font-size:14px;text-align:center;height:25px;width:25px;color:var(--ink-soft);position:relative;}
+  table.mini td.other{color:#bcbab0;}
+  table.mini .hdr-rule td{padding:0;}
+  table.mini .hdr-rule hr{border:none;border-top:1.5px solid var(--ink);margin:0 2px 3px;}
+  table.mini td.today span{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:24px;height:24px;border-radius:50%;background:var(--ink);color:var(--paper);font-weight:700;
+  }
+
+  /* 天气条（原项目没有，这里补上） */
+  .weather{
+    margin-top:14px;display:flex;align-items:center;gap:12px;
+    border:1.5px solid var(--ink);border-radius:8px;padding:9px 12px;
+  }
+  .weather .ico{font-size:34px;line-height:1;filter:grayscale(1) contrast(1.1);}
+  .weather .w-temp{font-size:30px;font-weight:800;line-height:1;}
+  .weather .w-meta{font-size:12.5px;color:var(--ink-soft);line-height:1.45;}
+  .weather .w-meta b{color:var(--ink);font-weight:600;}
+  .weather .w-city{margin-left:auto;text-align:right;font-size:12px;color:var(--ink-soft);}
+  .weather .w-city .nm{font-size:15px;font-weight:600;color:var(--ink);}
+
+  .divider{height:3px;background:var(--ink);margin:14px 0 4px;border-radius:2px;}
+
+  /* 今日待办 / 事件列表 —— 固定区域，超出像真机一样裁掉 */
+  .list-h{font-size:13px;font-weight:700;letter-spacing:2px;color:var(--ink-soft);margin:4px 1px 2px;flex:none;}
+  #eventList{flex:1 1 auto;min-height:0;overflow:hidden;
+    -webkit-mask-image:linear-gradient(to bottom,#000 88%,transparent 100%);
+            mask-image:linear-gradient(to bottom,#000 88%,transparent 100%);}
+  .day-group{display:flex;gap:11px;margin-top:9px;}
+  .day-rail{display:flex;flex-direction:column;align-items:center;min-width:42px;}
+  .day-rail .d-num{font-size:34px;font-weight:600;line-height:.9;}
+  .day-rail .d-dow{font-size:12px;color:var(--ink-soft);}
+  .day-rail.is-today{background:var(--ink);color:var(--paper);border-radius:7px;padding:3px 0 4px;}
+  .day-rail.is-today .d-dow{color:var(--paper);opacity:.85;}
+  .day-bar{width:3px;background:var(--ink);border-radius:2px;align-self:stretch;}
+  .events{flex:1;display:flex;flex-direction:column;gap:11px;padding-top:2px;}
+  .ev{display:flex;justify-content:space-between;gap:8px;}
+  .ev .e-main .e-title{font-size:18px;font-weight:700;line-height:1.15;}
+  .ev .e-main .e-sub{font-size:12.5px;color:var(--ink-soft);margin-top:2px;}
+  .ev .e-time{font-size:17px;font-weight:700;white-space:nowrap;text-align:right;}
+  .ev.done .e-title{text-decoration:line-through;color:var(--ink-faint);}
+  .ev .chk{font-size:16px;margin-right:6px;}
+
+  /* 底部状态条 */
+  .statusbar{
+    flex:none;margin-top:6px;display:flex;align-items:center;gap:10px;
+    font-size:11.5px;color:var(--ink-soft);
+    border-top:1.5px solid #c9c8be;padding-top:7px;
+  }
+  .statusbar .sb-r{margin-left:auto;display:flex;align-items:center;gap:5px;}
+
+  /* 夜间低功耗覆盖层 */
+  .screen.night{filter:brightness(.46) contrast(1.05);}
+  .night-badge{
+    position:absolute;left:0;right:0;bottom:0;top:0;display:none;
+    flex-direction:column;align-items:center;justify-content:center;gap:8px;
+    background:rgba(8,8,10,.34);backdrop-filter:blur(.5px);
+    color:#f3f2ec;text-align:center;
+  }
+  .screen.night .night-badge{display:flex;}
+  .night-badge .moon{font-size:46px;}
+  .night-badge .nb-t{font-size:17px;font-weight:600;letter-spacing:1px;}
+  .night-badge .nb-s{font-size:12.5px;opacity:.8;max-width:230px;line-height:1.5;}
+
+  /* ---------- 控制台（机身之外，明显不属于设备） ---------- */
+  .console{
+    width:438px;max-width:96vw;margin-top:22px;
+    background:#23252b;border:1px solid #34373e;border-radius:14px;padding:15px 16px 17px;
+  }
+  .console h2{font-size:12px;letter-spacing:1.5px;color:#878b94;margin:0 0 12px;font-weight:600;text-transform:uppercase;}
+  .row{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:11px;}
+  button.ctrl,select.ctrl,input.ctrl{
+    font:inherit;font-size:13px;color:#e7e7e7;background:#2e3137;
+    border:1px solid #3d4148;border-radius:9px;padding:8px 13px;cursor:pointer;
+    transition:.15s;
+  }
+  button.ctrl:hover{background:#383c44;border-color:#4a4f58;}
+  button.ctrl:active{transform:translateY(1px);}
+  button.ctrl.primary{background:#3c4250;border-color:#525a6b;}
+  input.ctrl{cursor:text;width:128px;}
+  .ctrl-label{font-size:12px;color:#878b94;}
+  .pill{font-size:11px;color:#9aa0ab;background:#2a2d33;border:1px solid #383b42;border-radius:20px;padding:4px 10px;}
+  .hint{font-size:11.5px;color:#6f747d;line-height:1.6;margin-top:4px;}
+  .hint code{background:#2a2d33;padding:1px 5px;border-radius:4px;color:#aeb4be;}
+  .todos-edit{display:flex;flex-direction:column;gap:6px;margin-top:4px;}
+  .todos-edit .te-row{display:flex;gap:6px;align-items:center;}
+  .todos-edit input{flex:1;}
+  .todos-edit .te-time{width:64px;flex:none;text-align:center;}
+  .todos-edit button.del{padding:6px 9px;background:#3a2b2b;border-color:#5a3d3d;}
+</style>
+</head>
+<body>
+
+<h1 class="page-title">🖥️ 墨水屏日历牌 · 浏览器模拟器</h1>
+<p class="page-sub">
+  原 <b>LilyGo T5 4.7" + ESPHome</b> 项目需要 $70 硬件 + Home Assistant 服务器才能看到画面。<br>
+  这里是<b>所见即所得的轻量版</b>：真天气 · 今日待办 · 30 分钟刷新 · 晚上自动低功耗——买板子前先看效果。
+</p>
+
+<!-- ============ 设备 ============ -->
+<div class="device">
+  <div class="screen" id="screen">
+    <!-- 顶部 -->
+    <div class="top">
+      <div class="today-block">
+        <div class="today-num" id="todayNum">30</div>
+        <div class="today-dow" id="todayDow">星期二</div>
+        <div class="today-my" id="todayMY">2026 年 6 月</div>
+      </div>
+      <table class="mini" id="miniCal"></table>
+    </div>
+
+    <!-- 天气条 -->
+    <div class="weather">
+      <div class="ico" id="wIco">⛅</div>
+      <div>
+        <div class="w-temp" id="wTemp">--°</div>
+        <div class="w-meta" id="wMeta">加载天气…</div>
+      </div>
+      <div class="w-city">
+        <div class="nm" id="wCity">—</div>
+        <div id="wRange">最高 --° / 最低 --°</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- 待办 / 事件 -->
+    <div class="list-h">今日待办 · TODAY &amp; 接下来</div>
+    <div id="eventList"></div>
+
+    <!-- 状态条 -->
+    <div class="statusbar">
+      <span id="sbBat">🔋 82%</span>
+      <span id="sbWifi">📶 −58dBm</span>
+      <span class="sb-r">
+        <span id="sbSync">同步于 14:32</span>
+        <span>·</span>
+        <span id="sbNext">30:00 后刷新</span>
+      </span>
+    </div>
+
+    <!-- 夜间覆盖 -->
+    <div class="night-badge">
+      <div class="moon">🌙</div>
+      <div class="nb-t">低功耗睡眠中</div>
+      <div class="nb-s" id="nbSub">墨水屏保持最后画面 · 06:00 自动唤醒刷新</div>
+    </div>
+  </div>
+  <div class="usb"></div>
+</div>
+
+<!-- ============ 控制台 ============ -->
+<div class="console">
+  <h2>● 控制台（真机上由 ESP32 + Home Assistant 自动完成）</h2>
+
+  <div class="row">
+    <button class="ctrl primary" id="btnRefresh">🔄 立即刷新</button>
+    <button class="ctrl" id="btnNight">🌙 切换夜间低功耗</button>
+    <span class="pill" id="modePill">☀️ 白天模式</span>
+  </div>
+
+  <div class="row">
+    <span class="ctrl-label">城市</span>
+    <input class="ctrl" id="cityInput" placeholder="如 上海 / Madrid" value="上海">
+    <button class="ctrl" id="btnCity">取天气</button>
+    <span class="ctrl-label" id="autoNote">自动夜间：22:00–06:00</span>
+  </div>
+
+  <h2 style="margin-top:6px">● 今日待办（本地保存，可编辑）</h2>
+  <div class="todos-edit" id="todosEdit"></div>
+  <div class="row" style="margin-top:8px;margin-bottom:0">
+    <button class="ctrl" id="btnAdd">＋ 加一条待办</button>
+  </div>
+  <div class="hint">
+    天气来自 <code>open-meteo.com</code>（免 API Key，离线时用示例数据）。待办存在浏览器 <code>localStorage</code>。<br>
+    真机版里这两样分别由 ESPHome 的 weather 实体和 Home Assistant 日历 / 待办列表提供。
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   墨水屏日历模拟器
+   忠实复刻 AppForce1/lilygo-t5-47-plus-esphome 的版面：
+   左大日期 + 右迷你月历 + 分隔线 + 按天分组的事件列表 + 状态条 + 深睡。
+   补充原项目缺失的：天气条、今日待办、30 分钟刷新可视倒计时。
+   ============================================================ */
+
+const $ = id => document.getElementById(id);
+const DOW_CN = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+const DOW_MINI = ['一','二','三','四','五','六','日']; // 周一起，复刻原项目
+const REFRESH_MIN = 30;       // 用户要求：每 30 分钟刷新
+const NIGHT_START = 22, NIGHT_END = 6;  // 复刻原项目 night_time
+
+let manualNight = null;       // null=跟随时间；true/false=手动覆盖
+let nextRefreshAt = Date.now() + REFRESH_MIN*60*1000;
+
+/* ---------- 待办数据 ---------- */
+const seedTodos = [
+  {t:'09:30', s:'晨会 · 团队站会', sub:'线上', done:true},
+  {t:'11:00', s:'写周报 + 回邮件', sub:'', done:false},
+  {t:'14:00', s:'产品评审会', sub:'会议室 A', done:false},
+  {t:'16:30', s:'健身 · 拉伸 30 分钟', sub:'', done:false},
+  {t:'20:00', s:'读书一章', sub:'', done:false},
+];
+function loadTodos(){
+  try{const r=localStorage.getItem('einkTodos');if(r)return JSON.parse(r);}catch(e){}
+  return JSON.parse(JSON.stringify(seedTodos));
+}
+function saveTodos(){localStorage.setItem('einkTodos',JSON.stringify(todos));}
+let todos = loadTodos();
+
+/* ---------- 迷你月历（周一起，今日描黑圈） ---------- */
+function renderMiniCal(now){
+  const y=now.getFullYear(), m=now.getMonth(), today=now.getDate();
+  const first=new Date(y,m,1);
+  let lead=(first.getDay()+6)%7;                 // 周一=0
+  const dim=new Date(y,m+1,0).getDate();
+  const prevDim=new Date(y,m,0).getDate();
+  let html='<tr>'+DOW_MINI.map(d=>`<th>${d}</th>`).join('')+'</tr>';
+  html+='<tr class="hdr-rule"><td colspan="7"><hr></td></tr>';
+  let day=1-lead, cells=[];
+  for(let i=0;i<42;i++,day++){
+    let cls='',label;
+    if(day<1){cls='other';label=prevDim+day;}
+    else if(day>dim){cls='other';label=day-dim;}
+    else{label=day; if(day===today)cls='today';}
+    cells.push(`<td class="${cls}">${cls==='today'?`<span>${label}</span>`:label}</td>`);
+  }
+  for(let r=0;r<6;r++){
+    const slice=cells.slice(r*7,r*7+7);
+    if(slice.slice(0,7).every(c=>c.includes('other'))&&r>4)continue;
+    html+='<tr>'+slice.join('')+'</tr>';
+  }
+  $('miniCal').innerHTML=html;
+}
+
+/* ---------- 顶部大日期 ---------- */
+function renderToday(now){
+  $('todayNum').textContent=now.getDate();
+  $('todayDow').textContent=DOW_CN[now.getDay()];
+  $('todayMY').textContent=`${now.getFullYear()} 年 ${now.getMonth()+1} 月`;
+}
+
+/* ---------- 事件列表（今日 + 接下来两天示例） ---------- */
+function renderEvents(now){
+  const wrap=$('eventList'); wrap.innerHTML='';
+  const upcoming=[
+    {offset:0, items:todos.map(t=>({time:t.t,title:t.s,sub:t.sub,done:t.done}))},
+    {offset:1, items:[
+      {time:'10:00',title:'牙医复诊',sub:'口腔医院',done:false},
+      {time:'19:30',title:'朋友聚餐',sub:'外滩',done:false},
+    ]},
+    {offset:3, items:[
+      {time:'',title:'项目交付日',sub:'全天 · Deadline',done:false},
+    ]},
+  ];
+  upcoming.forEach(g=>{
+    const d=new Date(now); d.setDate(now.getDate()+g.offset);
+    const isToday=g.offset===0;
+    const group=document.createElement('div'); group.className='day-group';
+    group.innerHTML=`
+      <div class="day-rail ${isToday?'is-today':''}">
+        <div class="d-num">${d.getDate()}</div>
+        <div class="d-dow">${DOW_CN[d.getDay()].slice(-1)}</div>
+      </div>
+      <div class="day-bar"></div>
+      <div class="events"></div>`;
+    const ev=group.querySelector('.events');
+    g.items.forEach(it=>{
+      const row=document.createElement('div'); row.className='ev'+(it.done?' done':'');
+      row.innerHTML=`
+        <div class="e-main"><div class="e-title">${it.done?'<span class="chk">✓</span>':''}${escapeHtml(it.title)}</div>
+        ${it.sub?`<div class="e-sub">${escapeHtml(it.sub)}</div>`:''}</div>
+        ${it.time?`<div class="e-time">${it.time}</div>`:'<div class="e-time" style="font-weight:500;font-size:13px">全天</div>'}`;
+      ev.appendChild(row);
+    });
+    wrap.appendChild(group);
+  });
+}
+function escapeHtml(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+/* ---------- 天气（Open-Meteo，免 Key；失败用示例） ---------- */
+const WMO={0:['☀️','晴'],1:['🌤️','大部晴'],2:['⛅','多云'],3:['☁️','阴'],
+  45:['🌫️','雾'],48:['🌫️','雾凇'],51:['🌦️','小毛雨'],53:['🌦️','毛雨'],55:['🌧️','密毛雨'],
+  61:['🌧️','小雨'],63:['🌧️','中雨'],65:['🌧️','大雨'],71:['🌨️','小雪'],73:['🌨️','中雪'],75:['❄️','大雪'],
+  80:['🌦️','阵雨'],81:['🌧️','阵雨'],82:['⛈️','暴雨'],95:['⛈️','雷暴'],96:['⛈️','雷暴冰雹']};
+function setWeather(w){
+  $('wIco').textContent=w.ico; $('wTemp').textContent=Math.round(w.temp)+'°';
+  $('wMeta').innerHTML=`<b>${w.desc}</b> · 体感 ${Math.round(w.feels)}°<br>湿度 ${w.hum}% · 风 ${w.wind} km/h`;
+  $('wCity').textContent=w.city;
+  $('wRange').textContent=`最高 ${Math.round(w.hi)}° / 最低 ${Math.round(w.lo)}°`;
+}
+const mockWeather=city=>({ico:'⛅',temp:24,feels:25,desc:'多云',hum:62,wind:11,hi:28,lo:19,city:city||'上海（示例）'});
+async function fetchWeather(city){
+  try{
+    const g=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=zh`);
+    const gj=await g.json();
+    if(!gj.results||!gj.results.length)throw 0;
+    const {latitude:lat,longitude:lon,name}=gj.results[0];
+    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=auto`);
+    const j=await r.json();
+    const code=j.current.weather_code, wm=WMO[code]||['🌡️','—'];
+    setWeather({ico:wm[0],desc:wm[1],temp:j.current.temperature_2m,feels:j.current.apparent_temperature,
+      hum:j.current.relative_humidity_2m,wind:Math.round(j.current.wind_speed_10m),
+      hi:j.daily.temperature_2m_max[0],lo:j.daily.temperature_2m_min[0],city:name});
+    return true;
+  }catch(e){ setWeather(mockWeather(city)); return false; }
+}
+
+/* ---------- 夜间低功耗判断 ---------- */
+function isNight(now){
+  if(manualNight!==null)return manualNight;
+  const h=now.getHours();
+  return (h>=NIGHT_START||h<NIGHT_END);
+}
+function applyMode(now){
+  const night=isNight(now);
+  $('screen').classList.toggle('night',night);
+  $('modePill').textContent=night?'🌙 夜间低功耗':'☀️ 白天模式';
+  const wakeH=String(NIGHT_END).padStart(2,'0');
+  $('nbSub').textContent=`墨水屏保持最后画面 · ${wakeH}:00 自动唤醒刷新`;
+}
+
+/* ---------- e-ink 黑闪刷新 ---------- */
+function einkFlash(){
+  const s=$('screen'); s.classList.remove('flash'); void s.offsetWidth; s.classList.add('flash');
+}
+
+/* ---------- 整屏刷新 ---------- */
+async function refreshAll(flash=true){
+  const now=new Date();
+  if(flash)einkFlash();
+  renderToday(now); renderMiniCal(now); renderEvents(now); applyMode(now);
+  await fetchWeather($('cityInput').value.trim()||'上海');
+  const hh=String(now.getHours()).padStart(2,'0'),mm=String(now.getMinutes()).padStart(2,'0');
+  $('sbSync').textContent=`同步于 ${hh}:${mm}`;
+  // 电量随机轻微变化，模拟真机
+  const bat=78+Math.floor(Math.sin(now.getTime()/9e6)*8+6);
+  $('sbBat').textContent=`🔋 ${bat}%`;
+  nextRefreshAt=Date.now()+REFRESH_MIN*60*1000;
+}
+
+/* ---------- 倒计时 + 时钟（每秒） ---------- */
+function tick(){
+  const now=new Date();
+  applyMode(now);
+  // 夜间深睡时，倒计时冻结（复刻真机：睡眠期间不刷新）
+  if(!isNight(now)){
+    let left=Math.max(0,nextRefreshAt-Date.now());
+    if(left===0){ refreshAll(true); left=REFRESH_MIN*60*1000; }
+    const m=Math.floor(left/60000), s=Math.floor(left%60000/1000);
+    $('sbNext').textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')} 后刷新`;
+  }else{
+    $('sbNext').textContent='睡眠中 · 不刷新';
+    nextRefreshAt=Date.now()+REFRESH_MIN*60*1000; // 唤醒后从满计时
+  }
+  // wifi 信号轻微抖动
+  $('sbWifi').textContent=`📶 −${56+Math.floor(Math.abs(Math.sin(now.getSeconds()))*8)}dBm`;
+}
+
+/* ---------- 待办编辑面板 ---------- */
+function renderTodoEditor(){
+  const box=$('todosEdit'); box.innerHTML='';
+  todos.forEach((t,i)=>{
+    const row=document.createElement('div'); row.className='te-row';
+    row.innerHTML=`
+      <input class="ctrl te-time" value="${t.t}" data-i="${i}" data-k="t" placeholder="时间">
+      <input class="ctrl" value="${escapeHtml(t.s)}" data-i="${i}" data-k="s" placeholder="待办">
+      <button class="ctrl" data-done="${i}" title="完成">${t.done?'✓':'○'}</button>
+      <button class="ctrl del" data-del="${i}">✕</button>`;
+    box.appendChild(row);
+  });
+  box.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',e=>{
+    todos[e.target.dataset.i][e.target.dataset.k]=e.target.value; saveTodos(); renderEvents(new Date());
+  }));
+  box.querySelectorAll('[data-done]').forEach(b=>b.addEventListener('click',e=>{
+    const i=e.target.dataset.done; todos[i].done=!todos[i].done; saveTodos(); renderTodoEditor(); renderEvents(new Date());
+  }));
+  box.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',e=>{
+    todos.splice(e.target.dataset.del,1); saveTodos(); renderTodoEditor(); renderEvents(new Date());
+  }));
+}
+
+/* ---------- 事件绑定 ---------- */
+$('btnRefresh').addEventListener('click',()=>refreshAll(true));
+$('btnNight').addEventListener('click',()=>{
+  const now=new Date(); manualNight=!isNight(now); applyMode(now);
+  if(!manualNight)einkFlash();
+});
+$('btnCity').addEventListener('click',()=>refreshAll(true));
+$('cityInput').addEventListener('keydown',e=>{if(e.key==='Enter')refreshAll(true);});
+$('btnAdd').addEventListener('click',()=>{
+  todos.push({t:'12:00',s:'新待办',sub:'',done:false}); saveTodos(); renderTodoEditor(); renderEvents(new Date());
+});
+
+/* ---------- 启动 ---------- */
+(function init(){
+  // URL 参数可强制白天/夜间模式（方便分享与截图）：?day / ?night
+  const _p=new URLSearchParams(location.search);
+  if(_p.has('day'))manualNight=false; else if(_p.has('night'))manualNight=true;
+  const now=new Date();
+  renderToday(now); renderMiniCal(now); renderEvents(now); applyMode(now);
+  setWeather(mockWeather($('cityInput').value)); // 先放示例，秒出完整画面
+  renderTodoEditor();
+  refreshAll(false);                              // 再尝试取真天气
+  setInterval(tick,1000);
+})();
+</script>
+</body>
+</html>
