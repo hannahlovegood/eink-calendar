@@ -130,6 +130,8 @@
     border-top:1.5px solid #c9c8be;padding-top:7px;
   }
   .statusbar .sb-r{margin-left:auto;display:flex;align-items:center;gap:5px;}
+  /* 屏内 emoji 一律去色，维持墨水屏黑白灰 */
+  #sbBat,#sbWifi,.night-badge .moon{filter:grayscale(1) contrast(1.1);}
 
   /* 夜间低功耗覆盖层 */
   .screen.night{filter:brightness(.46) contrast(1.05);}
@@ -142,7 +144,7 @@
   .screen.night .night-badge{display:flex;}
   .night-badge .moon{font-size:46px;}
   .night-badge .nb-t{font-size:17px;font-weight:600;letter-spacing:1px;}
-  .night-badge .nb-s{font-size:12.5px;opacity:.8;max-width:230px;line-height:1.5;}
+  .night-badge .nb-s{font-size:12.5px;opacity:.8;max-width:250px;line-height:1.5;}
 
   /* ---------- 控制台（机身之外，明显不属于设备） ---------- */
   .console{
@@ -312,7 +314,7 @@ function renderMiniCal(now){
   }
   for(let r=0;r<6;r++){
     const slice=cells.slice(r*7,r*7+7);
-    if(slice.slice(0,7).every(c=>c.includes('other'))&&r>4)continue;
+    if(slice.every(c=>c.includes('other')))continue; // 尾部整行都是下月日期就不显示
     html+='<tr>'+slice.join('')+'</tr>';
   }
   $('miniCal').innerHTML=html;
@@ -355,7 +357,7 @@ function renderEvents(now){
       row.innerHTML=`
         <div class="e-main"><div class="e-title">${it.done?'<span class="chk">✓</span>':''}${escapeHtml(it.title)}</div>
         ${it.sub?`<div class="e-sub">${escapeHtml(it.sub)}</div>`:''}</div>
-        ${it.time?`<div class="e-time">${it.time}</div>`:'<div class="e-time" style="font-weight:500;font-size:13px">全天</div>'}`;
+        ${it.time?`<div class="e-time">${escapeHtml(it.time)}</div>`:'<div class="e-time" style="font-weight:500;font-size:13px">全天</div>'}`;
       ev.appendChild(row);
     });
     wrap.appendChild(group);
@@ -374,7 +376,7 @@ function setWeather(w){
   $('wCity').textContent=w.city;
   $('wRange').textContent=`最高 ${Math.round(w.hi)}° / 最低 ${Math.round(w.lo)}°`;
 }
-const mockWeather=city=>({ico:'⛅',temp:24,feels:25,desc:'多云',hum:62,wind:11,hi:28,lo:19,city:city||'上海（示例）'});
+const mockWeather=city=>({ico:'⛅',temp:24,feels:25,desc:'多云',hum:62,wind:11,hi:28,lo:19,city:(city||'上海')+'（示例）'});
 async function fetchWeather(city){
   try{
     const g=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=zh`);
@@ -413,6 +415,8 @@ function einkFlash(){
 /* ---------- 整屏刷新 ---------- */
 async function refreshAll(flash=true){
   const now=new Date();
+  // 先把下次刷新时间推后，防止取天气挂起时 tick 每秒重复触发刷新
+  nextRefreshAt=Date.now()+REFRESH_MIN*60*1000;
   if(flash)einkFlash();
   renderToday(now); renderMiniCal(now); renderEvents(now); applyMode(now);
   await fetchWeather($('cityInput').value.trim()||'上海');
@@ -448,7 +452,7 @@ function renderTodoEditor(){
   todos.forEach((t,i)=>{
     const row=document.createElement('div'); row.className='te-row';
     row.innerHTML=`
-      <input class="ctrl te-time" value="${t.t}" data-i="${i}" data-k="t" placeholder="时间">
+      <input class="ctrl te-time" value="${escapeHtml(t.t)}" data-i="${i}" data-k="t" placeholder="时间">
       <input class="ctrl" value="${escapeHtml(t.s)}" data-i="${i}" data-k="s" placeholder="待办">
       <button class="ctrl" data-done="${i}" title="完成">${t.done?'✓':'○'}</button>
       <button class="ctrl del" data-del="${i}">✕</button>`;
